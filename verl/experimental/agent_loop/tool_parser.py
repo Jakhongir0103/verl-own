@@ -98,9 +98,12 @@ class HermesToolParser(ToolParser):
                 name, arguments = function_call["name"], function_call["arguments"]
                 function_calls.append(FunctionCall(name=name, arguments=json.dumps(arguments, ensure_ascii=False)))
             except Exception as e:
-                logger.error(f"Failed to decode tool call: {e}")
+                # TODO: I think it is better to return the error message in the `content`
+                # so that the model can understand what went wrong
+                # content = str(e)
+                logger.error(f"Failed to decode the tool call ({match}): {e}")
 
-        # remaing text exclude tool call tokens
+        # remaining text exclude tool call tokens
         content = self.tool_call_regex.sub("", text)
 
         return content, function_calls

@@ -15,7 +15,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 from uuid import uuid4
 
 from verl.experimental.agent_loop.agent_loop import AgentLoopBase, AgentLoopOutput, register
@@ -31,14 +31,14 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 @register("tool_agent")
 class ToolAgentLoop(AgentLoopBase):
     @classmethod
-    def init_class(cls, config, tokenizer, **kwargs):
+    def init_class(cls, config, processing_class, **kwargs):
         if cls._class_initialized:
             return
         cls._class_initialized = True
         print("Performing class-level ToolAgentLoop initialization")
 
         # Initialize tools from config file
-        cls.tokenizer = tokenizer
+        cls.processing_class = processing_class
         cls.max_user_turns = config.actor_rollout_ref.rollout.multi_turn.max_user_turns
         cls.max_assistant_turns = config.actor_rollout_ref.rollout.multi_turn.max_assistant_turns
         cls.max_parallel_calls = config.actor_rollout_ref.rollout.multi_turn.max_parallel_calls
@@ -48,30 +48,55 @@ class ToolAgentLoop(AgentLoopBase):
         tool_list = initialize_tools_from_config(tool_config_path) if tool_config_path else []
         cls.tools = {tool.name: tool for tool in tool_list}
         cls.tool_schemas = [tool.tool_schema.model_dump(exclude_unset=True, exclude_none=True) for tool in tool_list]
-        cls.tool_parser = ToolParser.get_tool_parser(config.actor_rollout_ref.rollout.multi_turn.format, cls.tokenizer)
+        cls.tool_parser = ToolParser.get_tool_parser(config.actor_rollout_ref.rollout.multi_turn.format, cls.processing_class)
         print(f"Initialized tools: {cls.tools}")
 
         cls.prompt_length = config.actor_rollout_ref.rollout.prompt_length
         cls.response_length = config.actor_rollout_ref.rollout.response_length
-        cls.system_prompt = tokenizer.apply_chat_template([{}], add_generation_prompt=False, tokenize=True)
+
+        try:
+            # This is when processing_class is a processor
+            cls.system_prompt = processing_class.tokenizer.apply_chat_template([{}], add_generation_prompt=False, tokenize=True)
+        except AttributeError:
+            try:
+                # This is when processing_class is a tokenizer
+                cls.system_prompt = processing_class.apply_chat_template([{}], add_generation_prompt=False, tokenize=True)
+            except AttributeError as e:
+                raise ValueError(f"Cannot get tokenizer from processing_class {processing_class}") from e
+
+        # remove ['\n', '<|im_start|>', '\n', '<|im_end|>', '\n']
+        # so that tool_response starts with ['\n', '<|im_start|>']
+        cls.system_prompt = cls.system_prompt[: -5]
 
     @rollout_trace_op
-    async def run(self, messages: list[dict[str, Any]], sampling_params: dict[str, Any]) -> AgentLoopOutput:
+    async def run(
+        self, 
+        messages: list[dict[str, Any]],
+        sampling_params: dict[str, Any],
+        image_data: Optional[list[Any]] = None,
+        tools_kwargs: Optional[dict[str, Any]] = None
+    ) -> AgentLoopOutput:
         metrics = {}
         request_id = uuid4().hex
         prompt_ids = await self.loop.run_in_executor(
             None,
-            lambda: self.tokenizer.apply_chat_template(
+            lambda: self.processing_class.apply_chat_template(
                 messages, tools=self.tool_schemas, add_generation_prompt=True, tokenize=True
             ),
         )
         response_mask = []
 
+        if len(prompt_ids)==1 and isinstance(prompt_ids[0], list):
+            # `processor.apply_chat_template` returns [{}], while `tokenizer.apply_chat_template` returns {} for an input of batch size 1
+            # It could be a bug in HuggingFace implementation: https://github.com/huggingface/transformers/blob/37f8b0b53512e6aae0cfd15746c133c101783178/src/transformers/processing_utils.py#L1551C9-L1553C11
+            prompt_ids = prompt_ids[0]
+
         user_turns, assistant_turns = 0, 0
         while True:
+
             with simple_timer("generate_sequences", metrics):
                 response_ids = await self.server_manager.generate(
-                    request_id=request_id, prompt_ids=prompt_ids, sampling_params=sampling_params
+                    request_id=request_id, prompt_ids=prompt_ids, sampling_params=sampling_params, image_data=image_data
                 )
             prompt_ids += response_ids
             response_mask += [1] * len(response_ids)
@@ -97,7 +122,7 @@ class ToolAgentLoop(AgentLoopBase):
             # call tools
             tasks = []
             for tool_call in tool_calls[: self.max_parallel_calls]:
-                tasks.append(self._call_tool(tool_call))
+                tasks.append(self._call_tool(tool_call, tools_kwargs=tools_kwargs, image_data=image_data))
             with simple_timer("tool_calls", metrics):
                 tool_responses = await asyncio.gather(*tasks)
             if any(isinstance(item, Exception) for item in tool_responses):
@@ -106,10 +131,14 @@ class ToolAgentLoop(AgentLoopBase):
             # append tool_response_ids
             tool_response_ids = await self.loop.run_in_executor(
                 None,
-                lambda messages=tool_responses: self.tokenizer.apply_chat_template(
+                lambda messages=tool_responses: self.processing_class.apply_chat_template(
                     messages, add_generation_prompt=True, tokenize=True
                 ),
             )
+            if len(tool_response_ids)==1 and isinstance(tool_response_ids[0], list):
+                # `processor.apply_chat_template` returns [{}], while `tokenizer.apply_chat_template` returns {} for an input of batch size 1
+                # It could be a bug in HuggingFace implementation: https://github.com/huggingface/transformers/blob/37f8b0b53512e6aae0cfd15746c133c101783178/src/transformers/processing_utils.py#L1551C9-L1553C11
+                tool_response_ids = tool_response_ids[0]
             tool_response_ids = tool_response_ids[len(self.system_prompt) :]
 
             # NOTE: last turn should not be user turn, or the EOS token reward
@@ -133,7 +162,7 @@ class ToolAgentLoop(AgentLoopBase):
         )
         return output
 
-    async def _call_tool(self, tool_call: FunctionCall) -> dict[str, str]:
+    async def _call_tool(self, tool_call: FunctionCall, tools_kwargs: Optional[dict[str, Any]] = None, image_data: Optional[list[Any]] = None) -> dict[str, str]:
         """Call tool and return tool response."""
         tool, instance_id = None, None
         try:
@@ -142,25 +171,46 @@ class ToolAgentLoop(AgentLoopBase):
             tool_args = json.loads(tool_call.arguments)
             tool = self.tools[tool_name]
 
-            instance_id = await tool.create()
+            if tools_kwargs:
+                create_kwargs = tools_kwargs[tool_name].get("create_kwargs", {})
+                instance_id = await tool.create(**create_kwargs)
+            else:
+                # make sure the tool indeed does not expect any input
+                instance_id = await tool.create()
             tool_response, _, _ = await tool.execute(instance_id, tool_args)
         except Exception as e:
             logger.exception(f"Error when executing tool: {e}")
-            return e
+            return {
+                "role": "tool",
+                "content": [
+                    {
+                        'type': 'text',
+                        'text': f"Error when executing tool: {e}",
+                    }
+                ]
+            }
         finally:
             if tool and instance_id:
                 await tool.release(instance_id)
 
-        if len(tool_response) > self.max_tool_response_length:
-            if self.tool_response_truncate_side == "left":
-                tool_response = tool_response[: self.max_tool_response_length] + "...(truncated)"
-            elif self.tool_response_truncate_side == "right":
-                tool_response = "(truncated)..." + tool_response[-self.max_tool_response_length :]
-            else:
-                length = self.max_tool_response_length // 2
-                tool_response = tool_response[:length] + "...(truncated)..." + tool_response[-length:]
+        if 'text' in tool_response:
+            if len(tool_response['text']) > self.max_tool_response_length:
+                if self.tool_response_truncate_side == "left":
+                    tool_response['text'] = tool_response['text'][: self.max_tool_response_length] + "...(truncated)"
+                elif self.tool_response_truncate_side == "right":
+                    tool_response['text'] = "(truncated)..." + tool_response['text'][-self.max_tool_response_length :]
+                else:
+                    length = self.max_tool_response_length // 2
+                    tool_response['text'] = tool_response['text'][:length] + "...(truncated)..." + tool_response['text'][-length:]
 
-        return {
-            "role": "tool",
-            "content": tool_response,
-        }
+        # output of `tool.execute` is expected to have as keys: `image` and/or `text`
+        image_response = tool_response.get("image", None)
+        text_response = tool_response.get("text", "")
+        output = {
+                "role": "tool",
+                "content": [{"type": "text", "text": text_response}],
+            }
+        if image_response:
+            image_data.append(image_response[0])
+            output['content'].append({"type": "image"})
+        return output

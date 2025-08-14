@@ -32,7 +32,7 @@ from vllm.outputs import RequestOutput
 from vllm.v1.engine.async_llm import AsyncLLM
 from vllm.v1.executor.abstract import Executor
 from vllm.worker.worker_base import WorkerWrapperBase
-
+from vllm.multimodal.inputs import MultiModalDataBuiltins
 from verl.utils.fs import copy_to_local
 from verl.workers.rollout.async_server import AsyncServerBase
 
@@ -313,10 +313,11 @@ class AsyncvLLMServer(AsyncServerBase):
             assert isinstance(generator, ChatCompletionResponse)
             return JSONResponse(content=generator.model_dump())
 
-    async def generate(self, prompt_ids: list[int], sampling_params: dict[str, Any], request_id: str) -> list[int]:
+    async def generate(self, prompt_ids: list[int], sampling_params: dict[str, Any], request_id: str, image_data: Optional[list[Any]] = None) -> list[int]:
         max_tokens = self.max_model_len - len(prompt_ids)
         sampling_params = SamplingParams(max_tokens=max_tokens, **sampling_params)
-        prompt = TokensPrompt(prompt_token_ids=prompt_ids)
+        multi_model_data = {'image': image_data} if image_data else None
+        prompt = TokensPrompt(prompt_token_ids=prompt_ids, multi_modal_data=multi_model_data)
         generator = self.engine.generate(prompt=prompt, sampling_params=sampling_params, request_id=request_id)
 
         # Get final response

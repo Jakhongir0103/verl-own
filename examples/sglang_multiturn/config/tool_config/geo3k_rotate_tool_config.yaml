@@ -1,0 +1,16 @@
+tools:
+  - class_name: "verl.tools.image_rotate_tool.ImageRotateTool"
+    config:
+      type: native
+    tool_schema:
+      type: "function"
+      function:
+        name: "image_rotate_tool"
+        description: "Rotate an image by a specified angle."
+        parameters:
+          type: "object"  
+          properties:
+            angle:
+              type: "integer"
+              description: "The angle by which to rotate the image, in degrees."
+          required: ["angle"]
