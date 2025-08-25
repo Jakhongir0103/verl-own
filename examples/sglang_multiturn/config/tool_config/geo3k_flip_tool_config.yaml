@@ -1,0 +1,17 @@
+tools:
+  - class_name: "verl.tools.image_flip_tool.ImageFlipTool"
+    config:
+      type: native
+    tool_schema:
+      type: "function"
+      function:
+        name: "image_flip_tool"
+        description: "Flip an image horizontally or vertically."
+        parameters:
+          type: "object"  
+          properties:
+            direction:
+              type: "string"
+              enum: ["horizontal", "vertical"]
+              description: "The direction in which to flip the image."
+          required: ["direction"]

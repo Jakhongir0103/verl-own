@@ -1,0 +1,27 @@
+tools:
+  - class_name: "verl.tools.image_line_tool.ImageLineTool"
+    config:
+      type: native
+    tool_schema:
+      type: "function"
+      function:
+        name: "image_line_tool"
+        description: "Draws a line on a specific region of an image based on start and end coordinates."
+        parameters:
+          type: "object"  
+          properties:
+            start:
+              type: "array"
+              items:
+                type: "number"
+              minItems: 2
+              maxItems: 2
+              description: "The starting point of the line, as [x1, y1], where (x1, y1) is the top-left corner."
+            end:
+              type: "array"
+              items:
+                type: "number"
+              minItems: 2
+              maxItems: 2
+              description: "The ending point of the line, as [x2, y2], where (x2, y2) is the bottom-right corner."
+          required: ["start", "end"]
