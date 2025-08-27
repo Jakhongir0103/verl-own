@@ -1,3 +1,11 @@
+This work introduces support for training multimodal models with reinforcement learning with external tools using images as both inputs and outputs.
+
+A corresponding PR: https://github.com/volcengine/verl/pull/2754 (though not merged 🙂)
+
+All the details can be found in [README_VLMRL.md](README_VLMRL.md).
+
+------------------------
+
 <div align="center">
  👋 Hi, everyone! 
     verl is a RL training library initiated by <b>ByteDance Seed team</b> and maintained by the verl community.

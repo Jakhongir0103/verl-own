@@ -90,25 +90,18 @@ def default_compute_score(
 
         res = geo3k.compute_score(solution_str, ground_truth)
 
-    elif 'text_rotations' in data_source:
+    elif data_source == "text_rotations":
         from . import geo3k
 
         res = geo3k.compute_score(solution_str, ground_truth)
 
-    elif data_source == "custom_multimodal":
-        from . import geo3k
+    elif data_source == "text_rotations_angle_reward":
+        from . import custom_rotation
 
-        res = geo3k.compute_score(solution_str, ground_truth)
-
-    elif data_source == "custom_rotate_angle_norm":
-        from . import rotate_angle_norm
-
-        res = rotate_angle_norm.compute_score(solution_str, ground_truth)
-
-    elif data_source == "custom_rotate_angle_relu":
-        from . import rotate_angle_relu
-
-        res = rotate_angle_relu.compute_score(solution_str, ground_truth)
+        # Assuming the model outputs the rotation angle of the image,
+        # The reward is computed as |predicted_angle - ground_truth_angle|
+        # normalized to 0 -- 1 from 180° -- 0°
+        res = custom_rotation.compute_score(solution_str, ground_truth)
 
     elif data_source in [
         "searchR1_nq",

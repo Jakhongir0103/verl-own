@@ -1,9 +1,0 @@
-tools:
-  - class_name: "verl.tools.image_sharpen_tool.ImageSharpenTool"
-    config:
-      type: native
-    tool_schema:
-      type: "function"
-      function:
-        name: "image_sharpen_tool"
-        description: "Sharpen an image."

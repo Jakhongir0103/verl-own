@@ -16,7 +16,7 @@
 # limitations under the License.
 
 """
-Preprocess the Geometry3k dataset to parquet format
+Preprocess the custom synthetic dataset to parquet format
 """
 
 import argparse
@@ -32,8 +32,7 @@ if __name__ == "__main__":
     parser.add_argument("--local_dir", default="/workspace/verl/data/geo3k_multiturn_w_tool")
     parser.add_argument("--hdfs_dir", default=None)
     args = parser.parse_args()
-    data_source = "/iopsstor/scratch/cscs/jsaydali/text_test/generate_random_rotation/text_rotations/text_recognition_dataset"
-    dataset = datasets.load_from_disk(data_source)
+    dataset = datasets.load_from_disk('data/rotations/text_recognition_dataset')
     # Split the loaded dataset into train and test if not already split
     if not isinstance(dataset, dict) and not hasattr(dataset, "keys"):
         dataset = dataset.train_test_split(test_size=0.1, seed=42)
@@ -57,12 +56,8 @@ if __name__ == "__main__":
             for img_path in images:
                 with open(img_path, "rb") as f:
                     pil_images.append(Image.open(f).convert("RGBA"))
-            # print(type(pil_images[-1]))     # <class 'PIL.Image.Image'>
-            # print(pil_images[-1])           # <PIL.Image.Image image mode=RGBA size=1024x1024 at 0x4000172DCF50>
-            # add 'file://' prefix to each image path to be read using `process_image`
-            # image_paths = [{'image_url': 'file://' + img_path} for img_path in images]
             data = {
-                "data_source": data_source,
+                "data_source": "text_rotations",
                 "agent_name": "tool_agent",
                 "prompt": [
                     {
@@ -111,17 +106,3 @@ if __name__ == "__main__":
     if hdfs_dir is not None:
         makedirs(hdfs_dir)
         copy(src=local_dir, dst=hdfs_dir)
-
-# def process_fn(example):
-#     images_paths = example.pop("images_paths")
-#     pil_images = []
-#     for img_path in images_paths:
-#         with open(img_path, "rb") as f:
-#             pil_images.append(Image.open(f).convert("RGBA"))
-#     print(type(pil_images[-1]))     # <class 'PIL.Image.Image'>
-#     print(pil_images[-1])           # <PIL.Image.Image image mode=RGBA size=1024x1024 at 0x4000172DCF50>
-#     data = {"images": pil_images}
-#     return data
-
-# train_dataset.map(function=process_fn, num_proc=8)
-# train_dataset.to_parquet(os.path.join(local_dir, "train.parquet"))
