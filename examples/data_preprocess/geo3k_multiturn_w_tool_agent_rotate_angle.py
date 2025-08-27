@@ -31,6 +31,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_dir", default="/workspace/verl/data/geo3k_multiturn_w_tool")
     parser.add_argument("--hdfs_dir", default=None)
+    parser.add_argument("--data_source", type=str, default='custom_rotate_angle_norm', choices=['custom_rotate_angle_norm', 'custom_rotate_angle_relu'])
     args = parser.parse_args()
     data_source = "/iopsstor/scratch/cscs/jsaydali/text_test/generate_images/angle_rotations_uniform/text_recognition_dataset"
     dataset = datasets.load_from_disk(data_source)
@@ -58,7 +59,7 @@ if __name__ == "__main__":
                 with open(img_path, "rb") as f:
                     pil_images.append(Image.open(f).convert("RGBA"))
             data = {
-                "data_source": 'custom_rotate_angle',
+                "data_source": args.data_source,
                 "agent_name": "tool_agent",
                 "prompt": [
                     {

@@ -395,7 +395,7 @@ class ImageCropTool(BaseTool):
                 return {"text": error_msg}, -0.05, {"success": False}
 
             cropped_image = image.crop(resized_bbox)
-            # self._save_image_debug_info(image, cropped_image, bbox_2d, resized_bbox, label, output_path="/users/jsaydali/scratch/run_outputs/image_outputs")
+            self._save_image_debug_info(image, cropped_image, bbox_2d, resized_bbox, label, output_path="/users/jsaydali/scratch/run_outputs/debug_outputs")
 
             logger.info(f"Cropped image size: {cropped_image.size}")
         except Exception as e:
