@@ -53,3 +53,24 @@ bash examples/sglang_multiturn/custom/grpo_multimodal_multiturn_rotate.sh
 - A custom reward can be added in [reward_score](verl/utils/reward_score) directory following [this](https://verl.readthedocs.io/en/latest/preparation/reward_function.html).
 
 *Hint: duplicate and modify the above-implemented tools:)*
+
+# Some Results
+
+I trained `Qwen2.5-VL-3B-Instruct` randomly rotated images to predict the rotation angle in multi-turn using `image_rotate_tool`.
+
+**Rewards:**
+- [0-180] -> 1 when the angles are equal, decreases linearly with angular error, and becomes 0 when the error reaches 180°
+- [0-45] -> 1 when the angles are equal, decreases linearly with angular error, and becomes 0 when the error is above 45°
+
+<div style="display: flex; gap: 20px;">
+    <img src="figures/angle.png" alt="Number of Turns" style="width: 100%;"/>
+</div>
+
+<div style="display: flex; gap: 20px;">
+    <img src="figures/num_turns.png" alt="Number of Turns" style="width: 50%;"/>
+    <img src="figures/rewards.png" alt="Rewards" style="width: 50%;"/>
+</div>
+
+1. With Reward [0-45], the model predicts the angles quite uniformly (+), but using the tool more than once (-).
+2. With small batch size, the model learns to use the tool only once, i.e. num_turns=4 (+), but also learns to always predict the average rotation angle (-).
+3. Large batch size and Reward [0-45] gives something in between.
